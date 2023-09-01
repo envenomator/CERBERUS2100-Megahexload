@@ -29,6 +29,11 @@
 #define XINBIT      2
 #define XCLKBIT     3
 
+#define SCREENSIZE    30*40
+#define SCREENSTART   0xf800
+#define CHARDEFSIZE   2048
+#define CHARDEFSTART  0xf000
+
 void setup_controlpins(void) {
   DDRB  |= (1 << XRDBIT) | (1 << XWRBIT) | (1 << XBUSREQBIT); // output pins
   PORTB |= (1 << XRDBIT) | (1 << XWRBIT) | (1 << XBUSREQBIT); // output high
@@ -90,7 +95,8 @@ void bus_write(uint16_t address, uint8_t data) {
   PORTC = address & 0xff; // LSB
   PORTL = (address >> 8) & 0xff; // MSB
   PORTB &= ~(1 << XWRBIT); // XWR to 0, active low
-  delayMicroseconds(1); // wait for memory write cycle to complete
+  //delayMicroseconds(1); // wait for memory write cycle to complete
+  delayMicroseconds(10);
   PORTB |= (1 << XWRBIT);
 }
 
@@ -102,9 +108,18 @@ uint8_t bus_read(uint16_t address) {
   //delayMicroseconds(100);
   PORTB &= ~(1 << XRDBIT); // XRD to 0, active low
   delayMicroseconds(50); // wait for bus stabilization and memory cycle
+  //delayMicroseconds(200);
   retval = PINA;
   PORTB |= (1 << XRDBIT);
   return retval;
+}
+
+// Send a byte as Intel Hex data (ascii hex value with two digits)
+void sendHxByte(uint8_t data) {
+  char buffer[3];
+
+  sprintf(buffer, "%02X", data);
+  Serial.print(buffer);
 }
 
 // Receive a single Nibble from the incoming Intel Hex data
@@ -139,6 +154,46 @@ void echo_checksum(uint8_t hxchecksum)
   // local echo status to the user
   if(hxchecksum) Serial.print("X");
   else Serial.print(".");
+}
+
+void hexdump(uint8_t *buffer, uint16_t address, uint16_t count) {
+  uint8_t h,l;
+  uint8_t hxchecksum;
+  uint8_t recordbytecount;
+
+  while(count) {
+    if(count > 16) recordbytecount = 16;
+    else recordbytecount = count;
+    count -= recordbytecount;
+    //Serial.println(recordbytecount);
+    h = address >> 8;
+    l = address & 0xff;
+    address += recordbytecount;
+    hxchecksum = recordbytecount + h + l;
+    Serial.print(":");
+    sendHxByte(recordbytecount);
+    sendHxByte(h);
+    sendHxByte(l);
+    sendHxByte(0); // Data record
+    while(recordbytecount--) {
+      sendHxByte(*buffer);
+      hxchecksum += *buffer;
+      buffer++;
+    }
+    hxchecksum = ~(hxchecksum) + 1;
+    sendHxByte(hxchecksum);
+    Serial.println();
+  }
+}
+void hexdump_sendEOF(void) {
+  // send termination record
+  Serial.print(":");
+  sendHxByte(0);
+  sendHxByte(0);
+  sendHxByte(0);
+  sendHxByte(1); // record type 1 - end of file
+  sendHxByte(0xff);
+  Serial.println();
 }
 
 // Hexload engine
@@ -211,10 +266,45 @@ void setup() {
   Serial.begin(1000000);
 }
 
+void captureScreen() {
+  char screenbuffer[SCREENSIZE];
+  char charbuffer[CHARDEFSIZE];
+  uint16_t count;
+  uint16_t address;
+  char *ptr;
+
+  bus_acquire();
+  address = CHARDEFSTART;
+  count = CHARDEFSIZE;
+  ptr = charbuffer;
+  while(count--) *(ptr++) = bus_read(address++);
+  address = SCREENSTART;
+  count = SCREENSIZE;
+  ptr = screenbuffer;
+  while(count--) *(ptr++) = bus_read(address++);
+  bus_release();
+
+  hexdump(charbuffer, CHARDEFSTART, CHARDEFSIZE);
+  hexdump(screenbuffer, SCREENSTART, SCREENSIZE);
+  hexdump_sendEOF();
+
+  delay(1000);
+}
+
 void loop() {
   Serial.println("Waiting for Intel Hex file");
   hexload();
 }
+/*
+void loop() {
+  DDRK  &= ~(1 << 0); // K0 input
+  PORTK |= (1 << 0);  // K0 pull-up
+  Serial.println("Press button for snapshot");
+  while(PINK & (1 << 0));
+
+  captureScreen();
+}
+*/
 /*
 void loop() {
   uint16_t errors = 0;
