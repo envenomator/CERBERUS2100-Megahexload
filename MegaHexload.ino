@@ -263,7 +263,12 @@ void hexload(void)
 void setup() {
   addressbus_mode(OUTPUT);
   setup_controlpins();
-  Serial.begin(1000000);
+
+  // pushbutton screencapture
+  DDRK  &= ~(1 << 0); // K0 input
+  PORTK |= (1 << 0);  // K0 pull-up
+
+  Serial.begin(115200);
 }
 
 void captureScreen() {
@@ -288,23 +293,31 @@ void captureScreen() {
   hexdump(screenbuffer, SCREENSTART, SCREENSIZE);
   hexdump_sendEOF();
 
-  delay(1000);
+  delay(250);
+}
+
+void waitMessage(void) {
+  Serial.println("Waiting for Intel Hex file / Button push");
 }
 
 void loop() {
-  Serial.println("Waiting for Intel Hex file");
-  hexload();
-}
-/*
-void loop() {
-  DDRK  &= ~(1 << 0); // K0 input
-  PORTK |= (1 << 0);  // K0 pull-up
-  Serial.println("Press button for snapshot");
-  while(PINK & (1 << 0));
+  uint8_t val;
+  waitMessage();
 
-  captureScreen();
+  while(true) {
+    val = PINK & (1 << 0);
+    if(val == 0) {
+      captureScreen();
+      waitMessage();
+    }
+    if((Serial.available() > 0) && (Serial.peek() != ':')) Serial.read(); // discard non-iHex crap
+    if((Serial.available() > 0) && (Serial.peek() == ':')) {
+      hexload();
+      waitMessage();
+    }
+  }
 }
-*/
+
 /*
 void loop() {
   uint16_t errors = 0;
