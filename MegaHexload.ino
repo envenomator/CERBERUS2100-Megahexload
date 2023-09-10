@@ -240,7 +240,7 @@ void hexload(void)
         }
         hxchecksum += getHxByte();  // finalize checksum with actual checksum byte in record, total 0 if no errors
         if(hxchecksum) errors++;
-        echo_checksum(hxchecksum);
+        //echo_checksum(hxchecksum);
         break;
       case 1: // end of file record
         getHxByte();
@@ -251,13 +251,8 @@ void hexload(void)
     }
     bus_release();
   }
-  Serial.println();
-  if(errors) {
-    Serial.print(errors);
-    Serial.println(" error(s)");
-  }
-  else
-    Serial.println("Transfer complete");
+  Serial.print(errors);
+  Serial.println(" errors(s)");
 }
 
 void setup() {
