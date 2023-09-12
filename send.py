@@ -91,7 +91,6 @@ try:
         ser.write(str(line).encode('ascii'))
 
     ser.readline()
-    ser.readline()
     line = ser.readline()
     errors = int(line.split()[0])
 
